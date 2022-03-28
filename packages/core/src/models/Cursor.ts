@@ -1,5 +1,6 @@
 import { Engine } from './Engine'
 import { action, define, observable } from '@formily/reactive'
+import { globalThisPolyfill, isValidNumber } from '@designable/shared'
 
 export enum CursorStatus {
   Normal = 'NORMAL',
@@ -8,9 +9,18 @@ export enum CursorStatus {
   DragStop = 'DRAG_STOP',
 }
 
+export enum CursorDragType {
+  Normal = 'NORMAL',
+  Resize = 'RESIZE',
+  Rotate = 'ROTATE',
+  Translate = 'TRANSLATE',
+  Round = 'ROUND',
+}
+
 export enum CursorType {
-  Move = 'MOVE',
+  Normal = 'NORMAL',
   Selection = 'SELECTION',
+  Sketch = 'SKETCH',
 }
 
 export interface ICursorPosition {
@@ -29,11 +39,6 @@ export interface ICursorPosition {
   topClientX?: number
 
   topClientY?: number
-}
-
-export interface IScrollOffset {
-  scrollX?: number
-  scrollY?: number
 }
 
 export interface ICursor {
@@ -59,11 +64,6 @@ const DEFAULT_POSITION = {
   topClientY: 0,
 }
 
-const DEFAULT_SCROLL_OFFSET = {
-  scrollX: 0,
-  scrollY: 0,
-}
-
 const setCursorStyle = (contentWindow: Window, style: string) => {
   const currentRoot = document?.getElementsByTagName?.('html')?.[0]
   const root = contentWindow?.document?.getElementsByTagName('html')?.[0]
@@ -75,24 +75,42 @@ const setCursorStyle = (contentWindow: Window, style: string) => {
   }
 }
 
+const calcPositionDelta = (
+  end: ICursorPosition,
+  start: ICursorPosition
+): ICursorPosition => {
+  return Object.keys(end || {}).reduce((buf, key) => {
+    if (isValidNumber(end?.[key]) && isValidNumber(start?.[key])) {
+      buf[key] = end[key] - start[key]
+    } else {
+      buf[key] = end[key]
+    }
+    return buf
+  }, {})
+}
+
 export class Cursor {
   engine: Engine
 
-  type: CursorType | string = CursorType.Move
+  type: CursorType | string = CursorType.Normal
+
+  dragType: CursorDragType | string = CursorDragType.Normal
 
   status: CursorStatus = CursorStatus.Normal
 
   position: ICursorPosition = DEFAULT_POSITION
 
-  dragStartPosition: ICursorPosition = DEFAULT_POSITION
+  dragStartPosition: ICursorPosition
 
-  dragStartScrollOffset: IScrollOffset = DEFAULT_SCROLL_OFFSET
+  dragEndPosition: ICursorPosition
 
-  dragEndPosition: ICursorPosition = DEFAULT_POSITION
+  dragAtomDelta: ICursorPosition = DEFAULT_POSITION
 
-  dragEndScrollOffset: IScrollOffset = DEFAULT_SCROLL_OFFSET
+  dragStartToCurrentDelta: ICursorPosition = DEFAULT_POSITION
 
-  view: Window = window
+  dragStartToEndDelta: ICursorPosition = DEFAULT_POSITION
+
+  view: Window = globalThisPolyfill
 
   constructor(engine: Engine) {
     this.engine = engine
@@ -102,12 +120,14 @@ export class Cursor {
   makeObservable() {
     define(this, {
       type: observable.ref,
+      dragType: observable.ref,
       status: observable.ref,
       position: observable.ref,
       dragStartPosition: observable.ref,
-      dragStartScrollOffset: observable.ref,
       dragEndPosition: observable.ref,
-      dragEndScrollOffset: observable.ref,
+      dragAtomDelta: observable.ref,
+      dragStartToCurrentDelta: observable.ref,
+      dragStartToEndDelta: observable.ref,
       view: observable.ref,
       setStyle: action,
       setPosition: action,
@@ -124,6 +144,10 @@ export class Cursor {
     this.type = type
   }
 
+  setDragType(type: CursorDragType | string) {
+    this.dragType = type
+  }
+
   setStyle(style: string) {
     this.engine.workbench.eachWorkspace((workspace) => {
       setCursorStyle(workspace.viewport.contentWindow, style)
@@ -131,33 +155,36 @@ export class Cursor {
   }
 
   setPosition(position?: ICursorPosition) {
-    this.position = {
-      ...this.position,
-      ...position,
+    this.dragAtomDelta = calcPositionDelta(this.position, position)
+    this.position = { ...position }
+    if (this.status === CursorStatus.Dragging) {
+      this.dragStartToCurrentDelta = calcPositionDelta(
+        this.position,
+        this.dragStartPosition
+      )
     }
   }
+
   setDragStartPosition(position?: ICursorPosition) {
-    this.dragStartPosition = {
-      ...this.dragStartPosition,
-      ...position,
+    if (position) {
+      this.dragStartPosition = { ...position }
+    } else {
+      this.dragStartPosition = null
+      this.dragStartToCurrentDelta = DEFAULT_POSITION
     }
   }
+
   setDragEndPosition(position?: ICursorPosition) {
-    this.dragEndPosition = {
-      ...this.dragEndPosition,
-      ...position,
-    }
-  }
-  setDragStartScrollOffset(offset?: IScrollOffset) {
-    this.dragStartScrollOffset = {
-      ...this.dragStartScrollOffset,
-      ...offset,
-    }
-  }
-  setDragEndScrollOffset(offset?: IScrollOffset) {
-    this.dragEndScrollOffset = {
-      ...this.dragEndScrollOffset,
-      ...offset,
+    if (!this.dragStartPosition) return
+    if (position) {
+      this.dragEndPosition = { ...position }
+      this.dragStartToEndDelta = calcPositionDelta(
+        this.dragStartPosition,
+        this.dragEndPosition
+      )
+    } else {
+      this.dragEndPosition = null
+      this.dragStartToEndDelta = DEFAULT_POSITION
     }
   }
 }

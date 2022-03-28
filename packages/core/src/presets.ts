@@ -17,6 +17,7 @@ import {
   useWorkspaceEffect,
   useFreeSelectionEffect,
   useContentEditableEffect,
+  useTranslateEffect,
 } from './effects'
 import {
   SelectNodes,
@@ -34,6 +35,7 @@ import {
 } from './shortcuts'
 
 export const DEFAULT_EFFECTS = [
+  useFreeSelectionEffect,
   useCursorEffect,
   useViewportEffect,
   useDragDropEffect,
@@ -42,14 +44,14 @@ export const DEFAULT_EFFECTS = [
   useKeyboardEffect,
   useAutoScrollEffect,
   useWorkspaceEffect,
-  useFreeSelectionEffect,
   useContentEditableEffect,
+  useTranslateEffect,
 ]
 
 export const DEFAULT_DRIVERS = [
+  MouseMoveDriver,
   DragDropDriver,
   MouseClickDriver,
-  MouseMoveDriver,
   ViewportResizeDriver,
   ViewportScrollDriver,
   KeyboardDriver,

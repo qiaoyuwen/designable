@@ -15,24 +15,21 @@ export const useCursorEffect = (engine: Engine) => {
         ? engine.cursor.status
         : CursorStatus.Normal
     )
+    if (engine.cursor.status === CursorStatus.Dragging) return
     engine.cursor.setPosition(event.data)
   })
   engine.subscribeTo(DragStartEvent, (event) => {
     engine.cursor.setStatus(CursorStatus.DragStart)
     engine.cursor.setDragStartPosition(event.data)
   })
-  let cleanStatusRequest = null
-  engine.subscribeTo(DragMoveEvent, () => {
+  engine.subscribeTo(DragMoveEvent, (event) => {
     engine.cursor.setStatus(CursorStatus.Dragging)
-    clearTimeout(cleanStatusRequest)
-    cleanStatusRequest = setTimeout(() => {
-      engine.cursor.setStatus(CursorStatus.Normal)
-    }, 1000)
+    engine.cursor.setPosition(event.data)
   })
   engine.subscribeTo(DragStopEvent, (event) => {
-    clearTimeout(cleanStatusRequest)
     engine.cursor.setStatus(CursorStatus.DragStop)
     engine.cursor.setDragEndPosition(event.data)
+    engine.cursor.setDragStartPosition(null)
     requestIdle(() => {
       engine.cursor.setStatus(CursorStatus.Normal)
     })

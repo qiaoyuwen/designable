@@ -1,5 +1,5 @@
 import { Path } from '@formily/path'
-import { requestIdle } from '@designable/shared'
+import { requestIdle, globalThisPolyfill } from '@designable/shared'
 import { Engine, TreeNode } from '../models'
 import { MouseDoubleClickEvent, MouseClickEvent } from '../events'
 
@@ -27,25 +27,25 @@ function setEndOfContenteditable(contentEditableElement: Element) {
   const range = document.createRange()
   range.selectNodeContents(contentEditableElement)
   range.collapse(false)
-  const selection = window.getSelection()
+  const selection = globalThisPolyfill.getSelection()
   selection.removeAllRanges()
   selection.addRange(range)
 }
 
 function createCaretCache(el: Element) {
-  const currentSelection = window.getSelection()
+  const currentSelection = globalThisPolyfill.getSelection()
   if (currentSelection.containsNode(el)) return
   const ranges = getAllRanges(currentSelection)
-  return () => {
-    const sel = window.getSelection()
+  return (offset = 0) => {
+    const sel = globalThisPolyfill.getSelection()
     const firstNode = el.childNodes[0]
     if (!firstNode) return
     sel.removeAllRanges()
     ranges.forEach((item) => {
       const range = document.createRange()
       range.collapse(item.collapsed)
-      range.setStart(firstNode, item.startOffset)
-      range.setEnd(firstNode, item.endOffset)
+      range.setStart(firstNode, item.startOffset + offset)
+      range.setEnd(firstNode, item.endOffset + offset)
       sel.addRange(range)
     })
   }
@@ -112,8 +112,20 @@ export const useContentEditableEffect = (engine: Engine) => {
 
   function onPastHandler(event: ClipboardEvent) {
     event.preventDefault()
+    const node = globalState.activeElements.get(this)
     const text = event.clipboardData.getData('text')
-    this.textContent = text
+    const selObj = globalThisPolyfill.getSelection()
+    const target = event.target as Element
+    const selRange = selObj.getRangeAt(0)
+    const restore = createCaretCache(target)
+    selRange.deleteContents()
+    selRange.insertNode(document.createTextNode(text))
+    Path.setIn(
+      node.props,
+      this.getAttribute(engine.props.contentEditableAttrName),
+      target.textContent
+    )
+    restore(text.length)
   }
 
   function findTargetNodeId(element: Element) {

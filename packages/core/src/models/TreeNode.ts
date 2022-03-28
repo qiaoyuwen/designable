@@ -73,7 +73,7 @@ const resetNodesParent = (nodes: TreeNode[], parent: TreeNode) => {
         node = node.clone(parent)
         resetDepth(node)
       } else if (!node.isRoot && node.isInOperation) {
-        node.root.operation.selection.remove(node)
+        node.operation?.selection.remove(node)
         removeNode(node)
         shallowReset(node)
       } else {
@@ -107,7 +107,7 @@ export class TreeNode {
 
   root: TreeNode
 
-  operation: Operation
+  rootOperation: Operation
 
   id: string
 
@@ -137,7 +137,7 @@ export class TreeNode {
       TreeNodes.set(this.id, this)
     } else {
       this.root = this
-      this.operation = node.operation
+      this.rootOperation = node.operation
       this.isSelfSourceNode = node.isSourceNode || false
       TreeNodes.set(this.id, this)
     }
@@ -223,7 +223,7 @@ export class TreeNode {
   }
 
   get isInOperation() {
-    return !!this.root?.operation
+    return !!this.operation
   }
 
   get lastChild() {
@@ -236,6 +236,58 @@ export class TreeNode {
 
   get isSourceNode() {
     return this.root.isSelfSourceNode
+  }
+
+  get operation() {
+    return this.root?.rootOperation
+  }
+
+  get viewport() {
+    return this.operation?.workspace?.viewport
+  }
+
+  get outline() {
+    return this.operation?.workspace?.outline
+  }
+
+  markCursorOffset() {
+    this.operation?.dragLine.markCursorToVertexOffsets([this])
+  }
+
+  getCursorOffset() {
+    return this.operation?.dragLine.getCursorToVertexOffsets([this])[0]
+  }
+
+  getNodeUnLimitVertex() {
+    return this.operation?.dragLine.getNodeUnLimitVertex(this)
+  }
+
+  getDraggingVertexOffset() {
+    return this.operation?.dragLine.getDraggingVertexOffset(this)
+  }
+
+  getElement(area: 'viewport' | 'outline' = 'viewport') {
+    return this[area]?.findElementById(this.id)
+  }
+
+  getValidElement(area: 'viewport' | 'outline' = 'viewport') {
+    return this[area]?.getValidNodeElement(this)
+  }
+
+  getElementRect(area: 'viewport' | 'outline' = 'viewport') {
+    return this[area]?.getElementRect(this.getElement(area))
+  }
+
+  getValidElementRect(area: 'viewport' | 'outline' = 'viewport') {
+    return this[area]?.getValidNodeRect(this)
+  }
+
+  getElementOffsetRect(area: 'viewport' | 'outline' = 'viewport') {
+    return this[area]?.getElementOffsetRect(this.getElement(area))
+  }
+
+  getValidElementOffsetRect(area: 'viewport' | 'outline' = 'viewport') {
+    return this[area]?.getValidNodeOffsetRect(this)
   }
 
   getPrevious(step = 1) {
@@ -293,14 +345,12 @@ export class TreeNode {
   }
 
   takeSnapshot(type?: string) {
-    if (this.root?.operation) {
-      this.root.operation.snapshot(type)
-    }
+    this.operation?.snapshot(type)
   }
 
   triggerMutation<T>(event: any, callback?: () => T, defaults?: T): T {
-    if (this.root?.operation) {
-      const result = this.root.operation.dispatch(event, callback) || defaults
+    if (this.operation) {
+      const result = this.operation.dispatch(event, callback) || defaults
       this.takeSnapshot(event?.type)
       return result
     } else if (isFn(callback)) {
@@ -312,14 +362,14 @@ export class TreeNode {
     if (finder(this)) {
       return this
     } else {
-      let finded = undefined
+      let result = undefined
       this.eachChildren((node) => {
         if (finder(node)) {
-          finded = node
+          result = node
           return false
         }
       })
-      return finded
+      return result
     }
   }
 
@@ -394,6 +444,13 @@ export class TreeNode {
     return ['y']
   }
 
+  allowTranslate(): boolean {
+    if (this === this.root && !this.isSourceNode) return false
+    const { translatable } = this.designerProps
+    if (translatable?.x && translatable?.y) return true
+    return false
+  }
+
   allowDelete() {
     if (this === this.root) return false
     return this.designerProps.deletable ?? true
@@ -418,6 +475,13 @@ export class TreeNode {
       }
       return false
     })
+  }
+
+  eachTree(callback?: (node: TreeNode) => void | boolean) {
+    if (isFn(callback)) {
+      callback(this.root)
+      this.root?.eachChildren(callback)
+    }
   }
 
   eachChildren(callback?: (node: TreeNode) => void | boolean) {

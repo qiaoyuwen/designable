@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { TreeNode } from '@designable/core'
-import { requestIdle, cancelIdle } from '@designable/shared'
-import { ResizeObserver } from '@juggle/resize-observer'
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { TreeNode, CursorStatus, CursorDragType } from '@designable/core'
+import { LayoutObserver } from '@designable/shared'
 import { useViewport } from './useViewport'
+import { useDesigner } from './useDesigner'
 
 const isEqualRect = (rect1: DOMRect, rect2: DOMRect) => {
   return (
@@ -14,52 +14,35 @@ const isEqualRect = (rect1: DOMRect, rect2: DOMRect) => {
 }
 
 export const useValidNodeOffsetRect = (node: TreeNode) => {
+  const engine = useDesigner()
   const viewport = useViewport()
   const [, forceUpdate] = useState(null)
-  const rectRef = useRef<DOMRect>(viewport.getValidNodeOffsetRect(node))
-  const idleTaskRef = useRef(null)
-  const unmountRef = useRef(false)
-  const observerRef = useRef(null)
+  const rectRef = useMemo(
+    () => ({ current: viewport.getValidNodeOffsetRect(node) }),
+    [viewport]
+  )
+
   const element = viewport.findElementById(node?.id)
 
   const compute = useCallback(() => {
-    if (unmountRef.current) return
+    if (
+      engine.cursor.status !== CursorStatus.Normal &&
+      engine.cursor.dragType === CursorDragType.Normal
+    )
+      return
     const nextRect = viewport.getValidNodeOffsetRect(node)
     if (!isEqualRect(rectRef.current, nextRect) && nextRect) {
       rectRef.current = nextRect
-      forceUpdate(nextRect)
+      forceUpdate([])
     }
   }, [viewport, node])
 
   useEffect(() => {
-    if (!element) return
-    if (observerRef.current) {
-      observerRef.current.disconnect()
-    }
-    observerRef.current = new ResizeObserver(() => {
-      compute()
-    })
-    observerRef.current.observe(element)
+    const layoutObserver = new LayoutObserver(compute)
+    if (element) layoutObserver.observe(element)
     return () => {
-      observerRef.current.disconnect()
+      layoutObserver.disconnect()
     }
-  }, [element, viewport])
-
-  useEffect(() => {
-    unmountRef.current = false
-    const requestIdleTask = () => {
-      cancelIdle(idleTaskRef.current)
-      idleTaskRef.current = requestIdle(() => {
-        compute()
-        requestIdleTask()
-      })
-    }
-    requestIdleTask()
-    return () => {
-      unmountRef.current = true
-      cancelIdle(idleTaskRef.current)
-    }
-  }, [node])
-
+  }, [node, viewport, element])
   return rectRef.current
 }
